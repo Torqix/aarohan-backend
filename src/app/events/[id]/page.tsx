@@ -3,72 +3,16 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, runTransaction, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Event, Registration } from '@/types';
 import Image from 'next/image';
 import toast from 'react-hot-toast';
 
-interface Props {
-  params: {
-    id: string;
-  };
-}
+// ... (keep existing Props interface)
 
 export default function EventDetail({ params }: Props) {
-  const { user, loading } = useAuth();
-  const router = useRouter();
-  const [event, setEvent] = useState<Event | null>(null);
-  const [registration, setRegistration] = useState<Registration | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isRegistering, setIsRegistering] = useState(false);
-
-  useEffect(() => {
-    const fetchEventAndRegistration = async () => {
-      try {
-        // Fetch event details
-        const eventDoc = await getDoc(doc(db, 'events', params.id));
-        if (!eventDoc.exists()) {
-          toast.error('Event not found');
-          router.push('/events');
-          return;
-        }
-
-        const eventData = {
-          id: eventDoc.id,
-          ...eventDoc.data(),
-          date: eventDoc.data().date.toDate(),
-          createdAt: eventDoc.data().createdAt.toDate(),
-          updatedAt: eventDoc.data().updatedAt.toDate(),
-        } as Event;
-        setEvent(eventData);
-
-        // If user is logged in, check if they're already registered
-        if (user) {
-          // Use a consistent registration ID format
-          const registrationId = `${params.id}_${user.uid}`;
-          const registrationDoc = await getDoc(doc(db, 'registrations', registrationId));
-          if (registrationDoc.exists()) {
-            const regData = registrationDoc.data();
-            setRegistration({
-              id: registrationDoc.id,
-              ...regData,
-              registeredAt: regData.registeredAt.toDate(),
-            } as Registration);
-          }
-        }
-      } catch (error) {
-        console.error('Error fetching event:', error);
-        toast.error('Failed to load event details');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    if (!loading) {
-      fetchEventAndRegistration();
-    }
-  }, [params.id, user, loading, router]);
+  // ... (keep existing state and useEffect)
 
   const handleRegister = async () => {
     if (!user) {
@@ -102,119 +46,60 @@ export default function EventDetail({ params }: Props) {
         return;
       }
 
-      // Create registration document with a specific ID
-      const registrationData = {
-        id: registrationId,
-        eventId: event.id,
-        userId: user.uid,
-        status: 'confirmed',
-        registeredAt: serverTimestamp(),
-        paymentStatus: event.isPaid ? 'pending' : 'not_required',
-      };
+      // Use a transaction to update both registration and event participant count
+      await runTransaction(db, async (transaction) => {
+        const eventRef = doc(db, 'events', event.id);
+        const eventDoc = await transaction.get(eventRef);
+        
+        if (!eventDoc.exists()) {
+          throw new Error('Event does not exist!');
+        }
 
-      // Use setDoc with merge option to ensure we don't create duplicates
-      await setDoc(doc(db, 'registrations', registrationId), registrationData, { merge: true });
-      
-      // Set the registration state with the correct date conversion
-      setRegistration({
-        ...registrationData,
-        registeredAt: new Date(),
-      } as Registration);
+        const currentData = eventDoc.data();
+        if (currentData.currentParticipants >= currentData.maxParticipants) {
+          throw new Error('Event is full');
+        }
+
+        // Create registration document
+        const registrationData = {
+          id: registrationId,
+          eventId: event.id,
+          userId: user.uid,
+          status: 'confirmed',
+          registeredAt: serverTimestamp(),
+          paymentStatus: event.isPaid ? 'pending' : 'not_required',
+        };
+
+        // Update event participant count
+        transaction.update(eventRef, {
+          currentParticipants: currentData.currentParticipants + 1,
+          updatedAt: serverTimestamp(),
+        });
+
+        // Create registration
+        transaction.set(doc(db, 'registrations', registrationId), registrationData);
+
+        // Update local state
+        setRegistration({
+          ...registrationData,
+          registeredAt: new Date(),
+        } as Registration);
+
+        // Update local event state
+        setEvent(prev => prev ? {
+          ...prev,
+          currentParticipants: prev.currentParticipants + 1,
+        } : null);
+      });
 
       toast.success('Successfully registered for the event!');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error registering for event:', error);
-      toast.error('Failed to register for event');
+      toast.error(error.message || 'Failed to register for event');
     } finally {
       setIsRegistering(false);
     }
   };
 
-  if (loading || isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-white"></div>
-      </div>
-    );
-  }
-
-  if (!event) {
-    return null;
-  }
-
-  return (
-    <div className="min-h-screen bg-gray-900">
-      {/* Event Banner */}
-      {event.bannerUrl && (
-        <div className="relative h-64 lg:h-96">
-          <Image
-            src={event.bannerUrl}
-            alt={event.title}
-            fill
-            className="object-cover"
-          />
-        </div>
-      )}
-
-      {/* Event Details */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="bg-gray-800 rounded-lg shadow-xl overflow-hidden">
-          <div className="p-6">
-            <h1 className="text-3xl font-bold text-white">{event.title}</h1>
-            
-            <div className="mt-4 flex flex-wrap gap-4">
-              <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-gray-700 text-gray-200">
-                {new Date(event.date).toLocaleDateString()} at{' '}
-                {new Date(event.date).toLocaleTimeString()}
-              </span>
-              <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-gray-700 text-gray-200">
-                {event.currentParticipants}/{event.maxParticipants} spots filled
-              </span>
-              {event.isPaid ? (
-                <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-yellow-100 text-yellow-800">
-                  Paid Event - ₹{event.price}
-                </span>
-              ) : (
-                <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
-                  Free Event
-                </span>
-              )}
-              <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-indigo-100 text-indigo-800">
-                {event.category}
-              </span>
-            </div>
-
-            <div className="mt-6">
-              <h2 className="text-xl font-semibold text-white">Description</h2>
-              <p className="mt-2 text-gray-300 whitespace-pre-wrap">{event.description}</p>
-            </div>
-
-            {/* Registration Status */}
-            <div className="mt-8">
-              {registration ? (
-                <button
-                  disabled
-                  className="w-full sm:w-auto px-6 py-3 border border-transparent text-base font-medium rounded-md text-white bg-green-600 opacity-75 cursor-not-allowed"
-                >
-                  Registered
-                </button>
-              ) : (
-                <button
-                  onClick={handleRegister}
-                  disabled={isRegistering || event.currentParticipants >= event.maxParticipants}
-                  className="w-full sm:w-auto px-6 py-3 border border-transparent text-base font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isRegistering
-                    ? 'Registering...'
-                    : event.currentParticipants >= event.maxParticipants
-                    ? 'Event Full'
-                    : 'Register Now'}
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+  // ... (keep existing render code)
 } 
