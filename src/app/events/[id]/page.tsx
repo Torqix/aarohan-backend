@@ -9,7 +9,11 @@ import { Event, Registration } from '@/types';
 import Image from 'next/image';
 import toast from 'react-hot-toast';
 
-// ... (keep existing Props interface)
+interface Props {
+  params: {
+    id: string;
+  };
+}
 
 export default function EventDetail({ params }: Props) {
   // ... (keep existing state and useEffect)
