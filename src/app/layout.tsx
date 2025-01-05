@@ -1,13 +1,15 @@
+import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
-import { Providers } from '@/components/Providers';
-import Navigation from '@/components/Navigation';
+import { Navigation } from '@/components/Navigation';
+import { Toaster } from 'react-hot-toast';
+import { AuthProvider } from '@/contexts/AuthContext';
 import './globals.css';
 
 const inter = Inter({ subsets: ['latin'] });
 
-export const metadata = {
-  title: 'AarohanR - College Fest Event Registration',
-  description: 'Register for college fest events at Poornima University',
+export const metadata: Metadata = {
+  title: 'Aarohan',
+  description: 'College Fest Event Registration Platform',
 };
 
 export default function RootLayout({
@@ -16,12 +18,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="h-full bg-gray-900">
-      <body className={`${inter.className} h-full text-white`}>
-        <Providers>
+    <html lang="en">
+      <body className={`${inter.className} min-h-screen bg-black text-white`}>
+        <AuthProvider>
           <Navigation />
-          {children}
-        </Providers>
+          <main className="pt-16">
+            {children}
+          </main>
+          <Toaster position="bottom-right" />
+        </AuthProvider>
       </body>
     </html>
   );

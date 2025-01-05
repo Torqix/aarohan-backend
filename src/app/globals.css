@@ -12,8 +12,68 @@ body {
   color: rgb(var(--foreground-rgb));
   background: linear-gradient(
     to bottom,
-    rgb(var(--background-start-rgb)),
+    transparent,
     rgb(var(--background-end-rgb))
-  );
+  ) rgb(var(--background-start-rgb));
   min-height: 100vh;
+}
+
+@layer base {
+  html {
+    @apply h-full scroll-smooth antialiased;
+  }
+
+  body {
+    @apply h-full;
+  }
+
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+}
+
+@layer components {
+  .form-input {
+    @apply block w-full rounded-md border-0 bg-vercel-gray-800/50 py-2 px-3 text-white shadow-sm ring-1 ring-inset ring-vercel-gray-700 placeholder:text-vercel-gray-400 focus:ring-2 focus:ring-inset focus:ring-vercel-blue sm:text-sm sm:leading-6 transition-colors;
+  }
+
+  .form-label {
+    @apply block text-sm font-medium leading-6 text-vercel-gray-300;
+  }
+
+  .form-error {
+    @apply mt-2 text-sm text-red-400;
+  }
+
+  .form-select {
+    @apply block w-full rounded-md border-0 bg-vercel-gray-800/50 py-2 px-3 text-white shadow-sm ring-1 ring-inset ring-vercel-gray-700 focus:ring-2 focus:ring-inset focus:ring-vercel-blue sm:text-sm sm:leading-6 transition-colors;
+  }
+
+  .form-checkbox {
+    @apply h-4 w-4 rounded border-vercel-gray-700 bg-vercel-gray-800/50 text-vercel-blue focus:ring-vercel-blue focus:ring-offset-black transition-colors;
+  }
+
+  .form-radio {
+    @apply h-4 w-4 border-vercel-gray-700 bg-vercel-gray-800/50 text-vercel-blue focus:ring-vercel-blue focus:ring-offset-black transition-colors;
+  }
+}
+
+@layer utilities {
+  .glass {
+    @apply bg-black/40 backdrop-blur-sm border border-vercel-gray-700;
+  }
+
+  .glass-hover {
+    @apply hover:bg-vercel-gray-800/40 hover:backdrop-blur-sm hover:border-vercel-gray-600;
+  }
+
+  .focus-ring {
+    @apply focus:outline-none focus-visible:ring-2 focus-visible:ring-vercel-blue focus-visible:ring-offset-2 focus-visible:ring-offset-black;
+  }
+
+  .text-balance {
+    text-wrap: balance;
+  }
 }

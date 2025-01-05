@@ -1,6 +1,6 @@
-import { getApps, getApp, initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import { initializeApp, getApp, getApps } from 'firebase/app';
+import { getAuth } from 'firebase/auth';
+import { getFirestore, connectFirestoreEmulator, FirestoreError } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 
 const firebaseConfig = {
@@ -17,6 +17,30 @@ const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 const auth = getAuth(app);
 const db = getFirestore(app);
 const storage = getStorage(app);
-const googleProvider = new GoogleAuthProvider();
 
-export { app, auth, db, storage, googleProvider }; 
+// Enable offline persistence
+if (typeof window !== 'undefined') {
+  try {
+    const { enableIndexedDbPersistence } = require('firebase/firestore');
+    enableIndexedDbPersistence(db).catch((err: FirestoreError) => {
+      if (err.code === 'failed-precondition') {
+        console.warn('Multiple tabs open, persistence can only be enabled in one tab at a time.');
+      } else if (err.code === 'unimplemented') {
+        console.warn('The current browser does not support persistence.');
+      }
+    });
+  } catch (error) {
+    console.warn('Error enabling offline persistence:', error);
+  }
+}
+
+// Connect to emulator in development
+if (process.env.NODE_ENV === 'development') {
+  try {
+    connectFirestoreEmulator(db, 'localhost', 8080);
+  } catch (error) {
+    console.warn('Error connecting to Firestore emulator:', error);
+  }
+}
+
+export { app, auth, db, storage }; 

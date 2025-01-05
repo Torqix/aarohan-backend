@@ -1,163 +1,194 @@
-interface Props {
-  params: {
-    id: string;
-  };
-}
-
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
-import { useRouter } from 'next/navigation';
-import { doc, getDoc, setDoc, runTransaction, serverTimestamp } from 'firebase/firestore';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/Card';
+import { Badge } from '@/components/ui/Badge';
+import { LoadingPage } from '@/components/ui/Loading';
+import { doc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { Event, Registration } from '@/types';
-import Image from 'next/image';
-import toast from 'react-hot-toast';
 
-export default function EventDetail({ params }: Props) {
+interface Event {
+  id: string;
+  title: string;
+  description: string;
+  date: string;
+  category: string;
+  status: string;
+  maxParticipants: number;
+  currentParticipants: number;
+  isPaid: boolean;
+  price?: number;
+}
+
+export default function EventDetailPage() {
+  const [event, setEvent] = useState<Event | null>(null);
+  const [loading, setLoading] = useState(true);
+  const { id } = useParams();
   const { user } = useAuth();
   const router = useRouter();
-  const [event, setEvent] = useState<Event | null>(null);
-  const [registration, setRegistration] = useState<Registration | null>(null);
-  const [isRegistering, setIsRegistering] = useState(false);
 
   useEffect(() => {
-    const fetchEvent = async () => {
+    async function fetchEvent() {
       try {
-        const eventDoc = await getDoc(doc(db, 'events', params.id));
+        const eventRef = doc(db, 'events', id as string);
+        const eventDoc = await getDoc(eventRef);
         if (eventDoc.exists()) {
           setEvent({
             id: eventDoc.id,
-            ...eventDoc.data(),
-            date: eventDoc.data().date.toDate(),
-            createdAt: eventDoc.data().createdAt.toDate(),
-            updatedAt: eventDoc.data().updatedAt.toDate(),
+            ...eventDoc.data()
           } as Event);
-
-          // If user is logged in, check if they're registered
-          if (user) {
-            const registrationId = `${params.id}_${user.uid}`;
-            const registrationDoc = await getDoc(doc(db, 'registrations', registrationId));
-            if (registrationDoc.exists()) {
-              setRegistration({
-                id: registrationDoc.id,
-                ...registrationDoc.data(),
-                registeredAt: registrationDoc.data().registeredAt.toDate(),
-              } as Registration);
-            }
-          }
-        } else {
-          toast.error('Event not found');
-          router.push('/events');
         }
       } catch (error) {
         console.error('Error fetching event:', error);
-        toast.error('Failed to load event details');
+      } finally {
+        setLoading(false);
       }
-    };
+    }
 
     fetchEvent();
-  }, [params.id, user]);
+  }, [id]);
 
-  const handleRegister = async () => {
-    if (!user) {
-      toast.error('Please sign in to register for events');
-      router.push('/');
-      return;
-    }
-
-    if (!event) return;
-
-    try {
-      setIsRegistering(true);
-
-      // Check if event is full
-      if (event.currentParticipants >= event.maxParticipants) {
-        toast.error('Event is already full');
-        return;
-      }
-
-      // Check if already registered
-      const registrationId = `${event.id}_${user.uid}`;
-      const registrationDoc = await getDoc(doc(db, 'registrations', registrationId));
-      
-      if (registrationDoc.exists()) {
-        toast.error('You are already registered for this event');
-        setRegistration({
-          id: registrationDoc.id,
-          ...registrationDoc.data(),
-          registeredAt: registrationDoc.data().registeredAt.toDate(),
-        } as Registration);
-        return;
-      }
-
-      // Use a transaction to update both registration and event participant count
-      await runTransaction(db, async (transaction) => {
-        const eventRef = doc(db, 'events', event.id);
-        const eventDoc = await transaction.get(eventRef);
-        
-        if (!eventDoc.exists()) {
-          throw new Error('Event does not exist!');
-        }
-
-        const currentData = eventDoc.data();
-        if (currentData.currentParticipants >= currentData.maxParticipants) {
-          throw new Error('Event is full');
-        }
-
-        // Create registration document
-        const registrationData = {
-          id: registrationId,
-          eventId: event.id,
-          userId: user.uid,
-          status: 'confirmed',
-          registeredAt: serverTimestamp(),
-          paymentStatus: event.isPaid ? 'pending' : 'not_required',
-        };
-
-        // Update event participant count
-        transaction.update(eventRef, {
-          currentParticipants: currentData.currentParticipants + 1,
-          updatedAt: serverTimestamp(),
-        });
-
-        // Create registration
-        transaction.set(doc(db, 'registrations', registrationId), registrationData);
-
-        // Update local state
-        setRegistration({
-          ...registrationData,
-          registeredAt: new Date(),
-        } as Registration);
-
-        // Update local event state
-        setEvent(prev => prev ? {
-          ...prev,
-          currentParticipants: prev.currentParticipants + 1,
-        } : null);
-      });
-
-      toast.success('Successfully registered for the event!');
-    } catch (error: any) {
-      console.error('Error registering for event:', error);
-      toast.error(error.message || 'Failed to register for event');
-    } finally {
-      setIsRegistering(false);
-    }
-  };
+  if (loading) {
+    return <LoadingPage />;
+  }
 
   if (!event) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-white"></div>
-      </div>
+      <main className="container mx-auto px-4 py-24 sm:px-6 lg:px-8">
+        <div className="flex min-h-[400px] flex-col items-center justify-center rounded-lg border border-vercel-gray-800 bg-vercel-gray-900 p-8 text-center">
+          <p className="text-vercel-gray-400">Event not found</p>
+          <button
+            onClick={() => router.back()}
+            className="mt-4 btn btn-outline"
+          >
+            Go Back
+          </button>
+        </div>
+      </main>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-900">
-      {/* Event details UI */}
-    </div>
+    <main className="container mx-auto px-4 py-24 sm:px-6 lg:px-8">
+      <Card className="overflow-hidden" glass>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <Badge
+              variant={
+                event.status === 'UPCOMING'
+                  ? 'success'
+                  : event.status === 'ONGOING'
+                  ? 'warning'
+                  : 'error'
+              }
+            >
+              {event.status}
+            </Badge>
+            <Badge variant="secondary">{event.category}</Badge>
+          </div>
+          <CardTitle className="mt-4 text-3xl" gradient>
+            {event.title}
+          </CardTitle>
+          <CardDescription>
+            {new Date(event.date).toLocaleDateString('en-US', {
+              weekday: 'long',
+              year: 'numeric',
+              month: 'long',
+              day: 'numeric',
+              hour: 'numeric',
+              minute: 'numeric',
+            })}
+          </CardDescription>
+        </CardHeader>
+
+        <CardContent>
+          <div className="prose prose-invert max-w-none">
+            <p className="text-vercel-gray-400">{event.description}</p>
+          </div>
+
+          <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Participants</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-2xl font-bold text-vercel-gray-300">
+                  {event.currentParticipants}/{event.maxParticipants}
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Registration</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-2xl font-bold text-vercel-gray-300">
+                  {event.isPaid ? (
+                    <span className="flex items-center gap-2">
+                      ₹{event.price}
+                      <Badge variant="gradient">Paid</Badge>
+                    </span>
+                  ) : (
+                    <Badge variant="success">Free</Badge>
+                  )}
+                </p>
+              </CardContent>
+            </Card>
+
+            {user?.role === 'admin' && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Management</CardTitle>
+                </CardHeader>
+                <CardContent className="flex gap-2">
+                  <button
+                    onClick={() => router.push(`/admin/events/${event.id}/edit`)}
+                    className="btn btn-outline"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    onClick={() => router.push(`/admin/events/${event.id}/registrations`)}
+                    className="btn btn-outline"
+                  >
+                    Registrations
+                  </button>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        </CardContent>
+
+        <CardFooter className="flex justify-end gap-4">
+          <button
+            onClick={() => router.back()}
+            className="btn btn-outline"
+          >
+            Go Back
+          </button>
+          {user ? (
+            <button
+              onClick={() => router.push(`/events/${event.id}/register`)}
+              className="btn btn-gradient"
+              disabled={event.currentParticipants >= event.maxParticipants}
+            >
+              {event.currentParticipants >= event.maxParticipants
+                ? 'Event Full'
+                : 'Register Now'}
+            </button>
+          ) : (
+            <button
+              onClick={() => router.push('/auth/signin')}
+              className="btn btn-gradient"
+            >
+              Sign in to Register
+            </button>
+          )}
+        </CardFooter>
+      </Card>
+    </main>
   );
 } 
