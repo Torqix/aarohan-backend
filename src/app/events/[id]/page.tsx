@@ -1,3 +1,9 @@
+interface Props {
+  params: {
+    id: string;
+  };
+}
+
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -9,14 +15,50 @@ import { Event, Registration } from '@/types';
 import Image from 'next/image';
 import toast from 'react-hot-toast';
 
-interface Props {
-  params: {
-    id: string;
-  };
-}
-
 export default function EventDetail({ params }: Props) {
-  // ... (keep existing state and useEffect)
+  const { user } = useAuth();
+  const router = useRouter();
+  const [event, setEvent] = useState<Event | null>(null);
+  const [registration, setRegistration] = useState<Registration | null>(null);
+  const [isRegistering, setIsRegistering] = useState(false);
+
+  useEffect(() => {
+    const fetchEvent = async () => {
+      try {
+        const eventDoc = await getDoc(doc(db, 'events', params.id));
+        if (eventDoc.exists()) {
+          setEvent({
+            id: eventDoc.id,
+            ...eventDoc.data(),
+            date: eventDoc.data().date.toDate(),
+            createdAt: eventDoc.data().createdAt.toDate(),
+            updatedAt: eventDoc.data().updatedAt.toDate(),
+          } as Event);
+
+          // If user is logged in, check if they're registered
+          if (user) {
+            const registrationId = `${params.id}_${user.uid}`;
+            const registrationDoc = await getDoc(doc(db, 'registrations', registrationId));
+            if (registrationDoc.exists()) {
+              setRegistration({
+                id: registrationDoc.id,
+                ...registrationDoc.data(),
+                registeredAt: registrationDoc.data().registeredAt.toDate(),
+              } as Registration);
+            }
+          }
+        } else {
+          toast.error('Event not found');
+          router.push('/events');
+        }
+      } catch (error) {
+        console.error('Error fetching event:', error);
+        toast.error('Failed to load event details');
+      }
+    };
+
+    fetchEvent();
+  }, [params.id, user]);
 
   const handleRegister = async () => {
     if (!user) {
@@ -105,5 +147,17 @@ export default function EventDetail({ params }: Props) {
     }
   };
 
-  // ... (keep existing render code)
+  if (!event) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-white"></div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-900">
+      {/* Event details UI */}
+    </div>
+  );
 } 
